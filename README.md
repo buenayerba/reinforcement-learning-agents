@@ -5,6 +5,8 @@ the Gridworld and CartPole problems.
 
 ## Markov Desicion Proccess (MDP)
 
+## Monte Carlo Cross-entropy method
+
 ## Q-Learning
 
 ## Deep Q Network
@@ -12,3 +14,4 @@ the Gridworld and CartPole problems.
 - Deep Q Learning
 - Experience replay
 - Target Netwrok
+
