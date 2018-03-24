@@ -1,0 +1,578 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Approximate q-learning\n",
+    "\n",
+    "In this notebook you will teach a lasagne neural network to do Q-learning."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "__Frameworks__ - we'll accept this homework in any deep learning framework. For example, it translates to TensorFlow almost line-to-line. However, we recommend you to stick to theano/lasagne unless you're certain about your skills in the framework of your choice."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "env: THEANO_FLAGS='floatX=float32'\n",
+      "Starting virtual X frame buffer: Xvfb../xvfb: line 8: start-stop-daemon: command not found\n",
+      ".\n",
+      "env: DISPLAY=:1\n"
+     ]
+    }
+   ],
+   "source": [
+    "%env THEANO_FLAGS='floatX=float32'\n",
+    "import os\n",
+    "if type(os.environ.get(\"DISPLAY\")) is not str or len(os.environ.get(\"DISPLAY\"))==0:\n",
+    "    !bash ../xvfb start\n",
+    "    %env DISPLAY=:1"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import gym\n",
+    "import numpy as np, pandas as pd\n",
+    "import matplotlib.pyplot as plt\n",
+    "%matplotlib inline"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 55,
+   "metadata": {
+    "scrolled": false
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "[2018-03-23 15:34:01,531] Making new env: CartPole-v0\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "<matplotlib.image.AxesImage at 0x1f1ece510>"
+      ]
+     },
+     "execution_count": 55,
+     "metadata": {},
+     "output_type": "execute_result"
+    },
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<matplotlib.figure.Figure at 0x1f0ec5c10>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "env = gym.make(\"CartPole-v0\").env\n",
+    "env.reset()\n",
+    "n_actions = env.action_space.n\n",
+    "state_dim = env.observation_space.shape\n",
+    "\n",
+    "plt.imshow(env.render(\"rgb_array\"))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Approximate (deep) Q-learning: building the network\n",
+    "\n",
+    "In this section we will build and train naive Q-learning with theano/lasagne"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "First step is initializing input variables"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import theano\n",
+    "import theano.tensor as T\n",
+    "\n",
+    "#create input variables. We'll support multiple states at once\n",
+    "\n",
+    "\n",
+    "current_states = T.matrix(\"states[batch,units]\")\n",
+    "actions = T.ivector(\"action_ids[batch]\")\n",
+    "rewards = T.vector(\"rewards[batch]\")\n",
+    "next_states = T.matrix(\"next states[batch,units]\")\n",
+    "is_end = T.ivector(\"vector[batch] where 1 means that session just ended\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "(None, 4)\n"
+     ]
+    }
+   ],
+   "source": [
+    "print ((None,)+state_dim)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import lasagne\n",
+    "from lasagne.layers import *\n",
+    "\n",
+    "# #input layer\n",
+    "#\n",
+    "# size of our input is not just size of the state, but it is some number of times\n",
+    "# multiplied by number of states (because we want to train a batch of samples t the same \n",
+    "# time)\n",
+    "# None is some arbitrary number of examples\n",
+    "l_states = InputLayer((None,)+state_dim)\n",
+    "\n",
+    "# <Your architecture. Please start with a single-layer network>\n",
+    "layer = lasagne.layers.DenseLayer(l_states, 42)\n",
+    "\n",
+    "# #output layer\n",
+    "l_qvalues = DenseLayer(layer,num_units=n_actions,nonlinearity=None)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Predicting Q-values for `current_states`"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#get q-values for ALL actions in current_states\n",
+    "predicted_qvalues = get_output(l_qvalues,{l_states:current_states})"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#compiling agent's \"GetQValues\" function\n",
+    "get_qvalues = theano.function([current_states], predicted_qvalues, allow_input_downcast=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#select q-values for chosen actions\n",
+    "predicted_qvalues_for_actions = predicted_qvalues[T.arange(actions.shape[0]),actions]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### Loss function and `update`\n",
+    "Here we write a function similar to `agent.update`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#predict q-values for next states\n",
+    "predicted_next_qvalues = get_output(l_qvalues,{l_states:next_states})\n",
+    "\n",
+    "#Computing target q-values under \n",
+    "gamma = 0.99\n",
+    "target_qvalues_for_actions = rewards + gamma * predicted_next_qvalues.max(axis=1)\n",
+    "\n",
+    "#zero-out q-values at the end\n",
+    "target_qvalues_for_actions = (1-is_end)*target_qvalues_for_actions\n",
+    "\n",
+    "#don't compute gradient over target q-values (consider constant)\n",
+    "target_qvalues_for_actions = theano.gradient.disconnected_grad(target_qvalues_for_actions)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#mean squared error loss function\n",
+    "loss = T.mean((predicted_qvalues_for_actions - target_qvalues_for_actions)**2 )"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#all network weights\n",
+    "all_weights = get_all_params(l_qvalues,trainable=True)\n",
+    "\n",
+    "#network updates. Note the small learning rate (for stability)\n",
+    "updates = lasagne.updates.sgd(loss,all_weights,learning_rate=1e-4)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Training function that resembles agent.update(state,action,reward,next_state) \n",
+    "#with 1 more argument meaning is_end\n",
+    "train_step = theano.function([current_states,actions,rewards,next_states,is_end],\n",
+    "                             updates=updates, allow_input_downcast=True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Playing the game"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 64,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "epsilon = 0.25 #initial epsilon\n",
+    "\n",
+    "def generate_session(t_max=1000):\n",
+    "    \"\"\"play env with approximate q-learning agent and train it at the same time\"\"\"\n",
+    "    \n",
+    "    total_reward = 0\n",
+    "    s = env.reset()\n",
+    "    \n",
+    "    for t in range(t_max):\n",
+    "        \n",
+    "        #get action q-values from the network\n",
+    "        q_values = get_qvalues([s])[0] \n",
+    "        \n",
+    "        if np.random.random() <= epsilon:\n",
+    "            a = np.random.choice(n_actions)\n",
+    "        else:\n",
+    "            a = np.argmax(q_values)        \n",
+    "        \n",
+    "        new_s,r,done,info = env.step(a)\n",
+    "        \n",
+    "        # Offset the position to 1\n",
+    "        r = r - 0.7 * abs(1 - s[0])\n",
+    "        \n",
+    "        #train agent one step. Note that we use one-element arrays instead of scalars \n",
+    "        #because that's what function accepts.\n",
+    "        train_step([s],[a],[r],[new_s],[done])\n",
+    "        \n",
+    "        total_reward+=r\n",
+    "        \n",
+    "        s = new_s\n",
+    "        if done: break\n",
+    "            \n",
+    "    return total_reward\n",
+    "        "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 65,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "mean reward:6.271\tepsilon:0.24750\n",
+      "mean reward:7.251\tepsilon:0.24502\n",
+      "mean reward:11.930\tepsilon:0.24257\n",
+      "mean reward:29.147\tepsilon:0.24015\n",
+      "mean reward:77.640\tepsilon:0.23775\n",
+      "mean reward:23.137\tepsilon:0.23537\n",
+      "mean reward:14.428\tepsilon:0.23302\n",
+      "mean reward:11.454\tepsilon:0.23069\n",
+      "mean reward:13.764\tepsilon:0.22838\n",
+      "mean reward:53.012\tepsilon:0.22610\n",
+      "mean reward:18.785\tepsilon:0.22383\n",
+      "mean reward:25.740\tepsilon:0.22160\n",
+      "mean reward:9.799\tepsilon:0.21938\n",
+      "mean reward:113.105\tepsilon:0.21719\n",
+      "mean reward:145.360\tepsilon:0.21501\n",
+      "mean reward:128.217\tepsilon:0.21286\n",
+      "mean reward:200.815\tepsilon:0.21074\n",
+      "You Win!\n"
+     ]
+    }
+   ],
+   "source": [
+    "for i in range(100):\n",
+    "    \n",
+    "    rewards = [generate_session() for _ in range(100)] #generate new sessions\n",
+    "    \n",
+    "    epsilon*=0.99\n",
+    "    \n",
+    "    print (\"mean reward:%.3f\\tepsilon:%.5f\"%(np.mean(rewards),epsilon))\n",
+    "\n",
+    "    if np.mean(rewards) > 200:\n",
+    "        print (\"You Win!\")\n",
+    "        break\n",
+    "        \n",
+    "    assert epsilon!=0, \"Please explore environment\""
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 59,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import time\n",
+    "from IPython.display import clear_output\n",
+    "\n",
+    "def play_session(t_max=20000):\n",
+    "\n",
+    "    total_reward = 0    \n",
+    "    s = env.reset()\n",
+    "    \n",
+    "    for t in range(t_max):\n",
+    "        \n",
+    "        #get action q-values from the network\n",
+    "        q_values = get_qvalues([s])[0] \n",
+    "        \n",
+    "        if np.random.random() <= epsilon:\n",
+    "            a = np.random.choice(n_actions)\n",
+    "        else:\n",
+    "            a = np.argmax(q_values)    \n",
+    "            \n",
+    "        print s[0]\n",
+    "        \n",
+    "        new_s,r,done,info = env.step(a)\n",
+    "        \n",
+    "#         train_step([s],[a],[r],[new_s],[done])\n",
+    "        \n",
+    "        total_reward+=r\n",
+    "        \n",
+    "        s = new_s\n",
+    "        \n",
+    "        #draw game image on display\n",
+    "        clear_output(True)\n",
+    "        env.render()\n",
+    "        plt.imshow(env.render(\"rgb_array\"))\n",
+    "        print(\"Total reward = {}\".format(total_reward))\n",
+    "    \n",
+    "        if done: \n",
+    "            env.close()\n",
+    "            break\n",
+    "    "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 60,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "KeyboardInterrupt",
+     "evalue": "",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mKeyboardInterrupt\u001b[0m                         Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-60-ad10f5d6d3ee>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m()\u001b[0m\n\u001b[0;32m----> 1\u001b[0;31m \u001b[0mplay_session\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;32m<ipython-input-59-82ba542be8cb>\u001b[0m in \u001b[0;36mplay_session\u001b[0;34m(t_max)\u001b[0m\n\u001b[1;32m     29\u001b[0m         \u001b[0;31m#draw game image on display\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     30\u001b[0m         \u001b[0mclear_output\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mTrue\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 31\u001b[0;31m         \u001b[0menv\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mrender\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     32\u001b[0m         \u001b[0mplt\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mimshow\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0menv\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mrender\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"rgb_array\"\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     33\u001b[0m         \u001b[0;32mprint\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m\"Total reward = {}\"\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mformat\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mtotal_reward\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m/usr/local/lib/python2.7/site-packages/gym/core.pyc\u001b[0m in \u001b[0;36mrender\u001b[0;34m(self, mode, close)\u001b[0m\n\u001b[1;32m    148\u001b[0m             \u001b[0;32melif\u001b[0m \u001b[0mmode\u001b[0m \u001b[0;32mnot\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mmodes\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    149\u001b[0m                 \u001b[0;32mraise\u001b[0m \u001b[0merror\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mUnsupportedMode\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m'Unsupported rendering mode: {}. (Supported modes for {}: {})'\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mformat\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mmode\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mmodes\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 150\u001b[0;31m         \u001b[0;32mreturn\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_render\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mmode\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mmode\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mclose\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0mclose\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    151\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    152\u001b[0m     \u001b[0;32mdef\u001b[0m \u001b[0mclose\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m/usr/local/lib/python2.7/site-packages/gym/envs/classic_control/cartpole.pyc\u001b[0m in \u001b[0;36m_render\u001b[0;34m(self, mode, close)\u001b[0m\n\u001b[1;32m    144\u001b[0m         \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mpoletrans\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mset_rotation\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m-\u001b[0m\u001b[0mx\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;36m2\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    145\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 146\u001b[0;31m         \u001b[0;32mreturn\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mviewer\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mrender\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mreturn_rgb_array\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mmode\u001b[0m\u001b[0;34m==\u001b[0m\u001b[0;34m'rgb_array'\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;32m/usr/local/lib/python2.7/site-packages/gym/envs/classic_control/rendering.pyc\u001b[0m in \u001b[0;36mrender\u001b[0;34m(self, return_rgb_array)\u001b[0m\n\u001b[1;32m     85\u001b[0m         \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mtransform\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0menable\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     86\u001b[0m         \u001b[0;32mfor\u001b[0m \u001b[0mgeom\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mgeoms\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 87\u001b[0;31m             \u001b[0mgeom\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mrender\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     88\u001b[0m         \u001b[0;32mfor\u001b[0m \u001b[0mgeom\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0monetime_geoms\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     89\u001b[0m             \u001b[0mgeom\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mrender\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m/usr/local/lib/python2.7/site-packages/gym/envs/classic_control/rendering.pyc\u001b[0m in \u001b[0;36mrender\u001b[0;34m(self)\u001b[0m\n\u001b[1;32m    152\u001b[0m         \u001b[0;32mfor\u001b[0m \u001b[0mattr\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mreversed\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mattrs\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    153\u001b[0m             \u001b[0mattr\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0menable\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 154\u001b[0;31m         \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mrender1\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    155\u001b[0m         \u001b[0;32mfor\u001b[0m \u001b[0mattr\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mattrs\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    156\u001b[0m             \u001b[0mattr\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mdisable\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m/usr/local/lib/python2.7/site-packages/gym/envs/classic_control/rendering.pyc\u001b[0m in \u001b[0;36mrender1\u001b[0;34m(self)\u001b[0m\n\u001b[1;32m    291\u001b[0m         \u001b[0mglVertex2f\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mstart\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    292\u001b[0m         \u001b[0mglVertex2f\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mend\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 293\u001b[0;31m         \u001b[0mglEnd\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    294\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    295\u001b[0m \u001b[0;32mclass\u001b[0m \u001b[0mImage\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mGeom\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m/usr/local/lib/python2.7/site-packages/pyglet/gl/lib.pyc\u001b[0m in \u001b[0;36merrcheck_glend\u001b[0;34m(result, func, arguments)\u001b[0m\n\u001b[1;32m    119\u001b[0m         \u001b[0;32mraise\u001b[0m \u001b[0mGLException\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m'No GL context; create a Window first'\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    120\u001b[0m     \u001b[0mcontext\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_gl_begin\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mFalse\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 121\u001b[0;31m     \u001b[0;32mreturn\u001b[0m \u001b[0merrcheck\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mresult\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mfunc\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0marguments\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    122\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    123\u001b[0m \u001b[0;32mdef\u001b[0m \u001b[0mdecorate_function\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mfunc\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mname\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mKeyboardInterrupt\u001b[0m: "
+     ]
+    },
+    {
+     "data": {
+      "image/png": "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\nEtxMgpv5N4n2MeqBLmVpAAAAAElFTkSuQmCC\n",
+      "text/plain": [
+       "<matplotlib.figure.Figure at 0x11d544750>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "play_session()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Video"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 37,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "epsilon=0 #Don't forget to reset epsilon back to initial value if you want to go on training"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 38,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "[2018-03-23 14:21:17,043] Making new env: CartPole-v0\n",
+      "[2018-03-23 14:21:17,050] Creating monitor directory videos\n",
+      "[2018-03-23 14:21:17,052] Starting new video recorder writing to /Users/yerbol/Desktop/Practical_RL-Yandex-School/week4_approx_rl/videos/openaigym.video.0.37524.video000000.mp4\n",
+      "[2018-03-23 14:21:17,431] Starting new video recorder writing to /Users/yerbol/Desktop/Practical_RL-Yandex-School/week4_approx_rl/videos/openaigym.video.0.37524.video000001.mp4\n",
+      "[2018-03-23 14:21:17,899] Starting new video recorder writing to /Users/yerbol/Desktop/Practical_RL-Yandex-School/week4_approx_rl/videos/openaigym.video.0.37524.video000008.mp4\n",
+      "[2018-03-23 14:21:21,356] Starting new video recorder writing to /Users/yerbol/Desktop/Practical_RL-Yandex-School/week4_approx_rl/videos/openaigym.video.0.37524.video000027.mp4\n",
+      "[2018-03-23 14:21:24,786] Starting new video recorder writing to /Users/yerbol/Desktop/Practical_RL-Yandex-School/week4_approx_rl/videos/openaigym.video.0.37524.video000064.mp4\n",
+      "[2018-03-23 14:21:25,589] Finished writing results. You can upload them to the scoreboard via gym.upload('/Users/yerbol/Desktop/Practical_RL-Yandex-School/week4_approx_rl/videos')\n"
+     ]
+    }
+   ],
+   "source": [
+    "#record sessions\n",
+    "import gym.wrappers\n",
+    "\n",
+    "env = gym.wrappers.Monitor(gym.make(\"CartPole-v0\"),directory=\"videos\",force=True)\n",
+    "sessions = [generate_session() for _ in range(100)]\n",
+    "env.close()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "#show video\n",
+    "from IPython.display import HTML\n",
+    "import os\n",
+    "\n",
+    "video_names = list(filter(lambda s:s.endswith(\".mp4\"),os.listdir(\"./videos/\")))\n",
+    "\n",
+    "HTML(\"\"\"\n",
+    "<video width=\"640\" height=\"480\" controls>\n",
+    "  <source src=\"{}\" type=\"video/mp4\">\n",
+    "</video>\n",
+    "\"\"\".format(\"./videos/\"+video_names[-1])) #this may or may not be _last_ video. Try other indices"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 66,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Collecting https://github.com/yandexdataschool/AgentNet/archive/master.zip\n",
+      "  Downloading https://github.com/yandexdataschool/AgentNet/archive/master.zip\n",
+      "\u001b[K     - 11.7MB 3.4MB/s\n",
+      "Requirement already up-to-date: six in /usr/local/lib/python2.7/site-packages (from agentnet==0.10.6)\n",
+      "Requirement already up-to-date: lasagne in /Users/yerbol/Library/Python/2.7/lib/python/site-packages (from agentnet==0.10.6)\n",
+      "Requirement already up-to-date: theano>=0.8.2 in /usr/local/lib/python2.7/site-packages (from agentnet==0.10.6)\n",
+      "Requirement already up-to-date: numpy>=1.9 in /Users/yerbol/Library/Python/2.7/lib/python/site-packages (from agentnet==0.10.6)\n",
+      "Requirement already up-to-date: scipy>=0.14 in /usr/local/lib/python2.7/site-packages (from theano>=0.8.2->agentnet==0.10.6)\n",
+      "Installing collected packages: agentnet\n",
+      "  Running setup.py install for agentnet ... \u001b[?25ldone\n",
+      "\u001b[?25hSuccessfully installed agentnet-0.10.6\n",
+      "\u001b[33mYou are using pip version 9.0.1, however version 9.0.2 is available.\n",
+      "You should consider upgrading via the 'pip install --upgrade pip' command.\u001b[0m\n"
+     ]
+    }
+   ],
+   "source": [
+    "    "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 2
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython2",
+   "version": "2.7.14"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 1
+}
